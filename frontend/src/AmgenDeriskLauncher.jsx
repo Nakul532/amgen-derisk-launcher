@@ -447,6 +447,50 @@ export default function AmgenDeriskLauncher() {
               </div>
             )}
           </div>
+
+          {/* Competitive Equilibrium */}
+          {hasRun && result?.competitive && (
+            <div className="rounded-xl border p-5" style={{ background: COLORS.panel, borderColor: COLORS.border }}>
+              <SectionLabel eyebrow="Panel 4" title="Competitive Equilibrium" />
+              <p className="text-xs leading-relaxed mb-4" style={{ ...body, color: COLORS.textFaint }}>
+                A real Bertrand-Nash best-response solve, not a labeled Monte Carlo run: Novo Nordisk and Eli Lilly
+                are modeled as rational agents that re-price to maximize their own profit against your configuration.
+                Their quality/cost inputs are illustrative demo assumptions, not sourced from either company's real data.
+              </p>
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                <div className="rounded-lg border px-3 py-2" style={{ borderColor: COLORS.borderSoft }}>
+                  <div className="text-[10px]" style={{ ...mono, color: COLORS.textFaint }}>Novo Nordisk reacts to</div>
+                  <div className="text-sm font-semibold" style={{ ...mono, color: COLORS.text }}>${result.competitive.novo_nordisk.median.toLocaleString()}</div>
+                  <div className="text-[10px]" style={{ ...mono, color: COLORS.textFaint }}>${result.competitive.novo_nordisk.p10.toLocaleString()}&ndash;${result.competitive.novo_nordisk.p90.toLocaleString()}</div>
+                </div>
+                <div className="rounded-lg border px-3 py-2" style={{ borderColor: COLORS.borderSoft }}>
+                  <div className="text-[10px]" style={{ ...mono, color: COLORS.textFaint }}>Eli Lilly reacts to</div>
+                  <div className="text-sm font-semibold" style={{ ...mono, color: COLORS.text }}>${result.competitive.eli_lilly.median.toLocaleString()}</div>
+                  <div className="text-[10px]" style={{ ...mono, color: COLORS.textFaint }}>${result.competitive.eli_lilly.p10.toLocaleString()}&ndash;${result.competitive.eli_lilly.p90.toLocaleString()}</div>
+                </div>
+                <div className="rounded-lg border px-3 py-2" style={{ borderColor: COLORS.borderSoft }}>
+                  <div className="text-[10px]" style={{ ...mono, color: COLORS.textFaint }}>Amgen equilibrium share</div>
+                  <div className="text-sm font-semibold" style={{ ...mono, color: COLORS.amber }}>{result.competitive.amgen_share_pct.median}%</div>
+                  <div className="text-[10px]" style={{ ...mono, color: COLORS.textFaint }}>{result.competitive.amgen_share_pct.p10}%&ndash;{result.competitive.amgen_share_pct.p90}%</div>
+                </div>
+              </div>
+              <div className="rounded-lg border p-3" style={{ borderColor: COLORS.borderSoft, background: COLORS.panelAlt }}>
+                <div className="text-[10px] mb-1" style={{ ...mono, color: COLORS.textFaint }}>Full 3-way Nash equilibrium benchmark</div>
+                <div className="flex items-baseline gap-3 flex-wrap">
+                  <div className="text-lg font-semibold" style={{ ...mono, color: COLORS.text }}>
+                    ${result.competitive.nash_equilibrium_price.median.toLocaleString()}
+                  </div>
+                  <div className="text-xs" style={{ ...body, color: COLORS.textDim }}>
+                    theoretical optimal price if Amgen also best-responds, vs your chosen ${price.toLocaleString()}
+                  </div>
+                </div>
+                <div className="text-xs mt-1" style={{ ...mono, color: Math.abs(result.competitive.price_gap_pct) <= 10 ? COLORS.teal : COLORS.amber }}>
+                  {result.competitive.price_gap_pct > 0 ? "+" : ""}{result.competitive.price_gap_pct}% vs equilibrium
+                  {Math.abs(result.competitive.price_gap_pct) <= 10 ? " — close to equilibrium" : result.competitive.price_gap_pct > 0 ? " — priced above what the model would set" : " — priced below what the model would set"}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

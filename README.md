@@ -29,8 +29,26 @@ estimate.
   with an iteration-count slider and a band chart (p10-p90 shaded range plus
   median line) instead of a single trajectory line. Points at the backend
   via the `VITE_API_URL` build-time env var.
+- `backend/app/game_theory.py` — a real Bertrand-Nash competitor model.
+  Novo Nordisk and Eli Lilly are modeled as rational profit-maximizing
+  agents (logit demand, ternary-search best response) that re-price against
+  Amgen's chosen configuration via iterative best-response until prices
+  stabilize. Reports both their equilibrium reaction prices and a separate
+  full 3-way equilibrium benchmark (what Amgen's own price would be if it
+  also best-responded). Competitor quality/cost inputs are illustrative demo
+  assumptions, not sourced from either company's real data — see the
+  disclaimer in the app's Panel 4.
 
 No authentication or database — this is a demo build for stakeholder review.
+
+## Security
+
+- **Transport:** real HTTPS/TLS on both services, auto-provisioned by
+  Render — not a placeholder claim.
+- **At rest:** nothing to encrypt — there is no database, so no boardroom or
+  pricing data is persisted anywhere. If this moves past demo stage and
+  starts storing real data, at-rest encryption and access control become a
+  real requirement at that point, not before.
 
 ## Local development
 

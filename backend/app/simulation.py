@@ -1,6 +1,8 @@
 import math
 import random
 
+from app.game_theory import LILLY, NOVO, solve_competitor_reaction, solve_joint_equilibrium
+
 DOSING_OPTIONS = ["Weekly", "Bi-Weekly", "Monthly"]
 HOSTILITY_OPTIONS = ["Low", "Medium", "High"]
 
@@ -159,6 +161,62 @@ def run_simulation(price: float, dosing: str, evidence_weight: float, hostility:
         playbook.append("Lock current parameters as the launch baseline and proceed to payer contracting.")
     playbook.append(f"Re-run with Competitor Hostility set to High to stress-test worst-case retaliation across {iterations:,} simulated conditions.")
 
+    # Nash equilibrium competitor model. This is a real best-response
+    # solve (Bertrand-Nash tatonnement over a logit demand model), not a
+    # label on the Monte Carlo above -- it answers a different question:
+    # given Amgen's chosen price, what would two named rational
+    # competitors actually do, and separately, what price would a fully
+    # rational Amgen have chosen. Capped at a smaller sample count than
+    # the main loop since each solve is far more expensive than one
+    # Monte Carlo draw.
+    game_iterations = min(iterations, 600)
+    novo_price_samples = []
+    lilly_price_samples = []
+    amgen_share_samples = []
+    nash_price_samples = []
+
+    for _ in range(game_iterations):
+        hostility_sample = clamp(hostility_idx + random.gauss(0, 0.4), 0, 2)
+        evidence_sample = clamp(evidence_weight + random.gauss(0, 0.06), 0, 1)
+        dosing_bonus_sample = max(0, dosing_convenience_bonus + random.gauss(0, 0.015))
+
+        amgen_quality = 3.6 + dosing_bonus_sample * 1.4 + evidence_sample * 1.0 + random.gauss(0, 0.08)
+        amgen_cost = clamp(480 + random.gauss(0, 15), 400, 600)
+
+        # Higher hostility = competitors defend share more aggressively,
+        # i.e. they're willing to accept thinner margin (lower effective
+        # cost floor) to win the equilibrium.
+        hostility_factor = 1 - 0.15 * hostility_sample
+        novo_cost = clamp(NOVO["cost"] * hostility_factor + random.gauss(0, 10), 300, 600)
+        lilly_cost = clamp(LILLY["cost"] * hostility_factor + random.gauss(0, 10), 300, 600)
+
+        p_novo, p_lilly, amgen_share = solve_competitor_reaction(price, amgen_quality, novo_cost, lilly_cost)
+        p_amgen_star = solve_joint_equilibrium(amgen_quality, amgen_cost, novo_cost, lilly_cost)
+
+        novo_price_samples.append(p_novo)
+        lilly_price_samples.append(p_lilly)
+        amgen_share_samples.append(amgen_share * 100)
+        nash_price_samples.append(p_amgen_star)
+
+    def band(samples, digits=0):
+        return {
+            "p10": round(percentile(samples, 0.1), digits),
+            "median": round(percentile(samples, 0.5), digits),
+            "p90": round(percentile(samples, 0.9), digits),
+        }
+
+    nash_median = percentile(nash_price_samples, 0.5)
+    price_gap_pct = round((price - nash_median) / nash_median * 100, 1)
+
+    competitive = {
+        "novo_nordisk": band(novo_price_samples),
+        "eli_lilly": band(lilly_price_samples),
+        "amgen_share_pct": band(amgen_share_samples, 1),
+        "nash_equilibrium_price": band(nash_price_samples),
+        "price_gap_pct": price_gap_pct,
+        "game_iterations": game_iterations,
+    }
+
     return {
         "norm": norm,
         "robustness": robustness_mean,
@@ -168,4 +226,5 @@ def run_simulation(price: float, dosing: str, evidence_weight: float, hostility:
         "risks": risks,
         "playbook": playbook,
         "iterations": iterations,
+        "competitive": competitive,
     }
