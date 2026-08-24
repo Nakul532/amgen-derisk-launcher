@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
-import { Play, AlertTriangle, ShieldCheck, ChevronRight, Loader2, Sparkles } from "lucide-react";
+import { Play, AlertTriangle, ShieldCheck, ChevronRight, Loader2, Sparkles, Bookmark, X, Scale } from "lucide-react";
 
 const FONT_IMPORT_ID = "amgen-derisk-fonts";
 if (typeof document !== "undefined" && !document.getElementById(FONT_IMPORT_ID)) {
@@ -36,6 +36,22 @@ const DOSING_OPTIONS = ["Weekly", "Bi-Weekly", "Monthly"];
 const HOSTILITY_OPTIONS = ["Low", "Medium", "High"];
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const SCENARIOS_STORAGE_KEY = "amgen_derisk_saved_scenarios";
+
+function loadSavedScenarios() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(SCENARIOS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function topRisk(result) {
+  const real = (result?.risks || []).filter((r) => r.severity !== "clear");
+  return real.length ? real[0] : null;
+}
 
 function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
@@ -235,6 +251,88 @@ function CustomTooltip({ active, payload, label }) {
   );
 }
 
+// --- Saved scenario vault -------------------------------------------------
+function ScenarioCard({ scenario, selected, onToggleCompare, onDelete }) {
+  const risk = topRisk(scenario.result);
+  return (
+    <div
+      className="rounded-lg border p-3 relative"
+      style={{ borderColor: selected ? COLORS.amber : COLORS.borderSoft, background: selected ? COLORS.amberDim + "30" : COLORS.panelAlt }}
+    >
+      <button
+        onClick={onDelete}
+        className="absolute top-2 right-2 opacity-60 hover:opacity-100"
+        aria-label="Delete scenario"
+      >
+        <X size={13} color={COLORS.textFaint} />
+      </button>
+      <div className="text-xs font-semibold mb-1 pr-4 truncate" style={{ ...display, color: COLORS.text }}>{scenario.label}</div>
+      <div className="text-[10px] mb-2" style={{ ...mono, color: COLORS.textFaint }}>
+        ${scenario.price.toLocaleString()} &middot; {scenario.dosing} &middot; {scenario.hostility}
+      </div>
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <div className="text-[9px]" style={{ ...mono, color: COLORS.textFaint }}>Robustness</div>
+          <div className="text-sm font-semibold" style={{ ...mono, color: scenario.result.robustness >= 60 ? COLORS.teal : scenario.result.robustness >= 35 ? COLORS.amber : COLORS.red }}>
+            {scenario.result.robustness}%
+          </div>
+        </div>
+        {risk && (
+          <div className="text-right max-w-[55%]">
+            <div className="text-[9px]" style={{ ...mono, color: COLORS.textFaint }}>Top risk</div>
+            <div className="text-[10px] leading-tight" style={{ ...body, color: COLORS.amber }}>{risk.title} ({risk.frequency}%)</div>
+          </div>
+        )}
+      </div>
+      <label className="flex items-center gap-1.5 text-[10px] cursor-pointer" style={{ ...body, color: COLORS.textDim }}>
+        <input type="checkbox" checked={selected} onChange={onToggleCompare} className="cursor-pointer" style={{ accentColor: COLORS.amber }} />
+        Compare
+      </label>
+    </div>
+  );
+}
+
+function ComparisonTable({ scenarios }) {
+  const rows = [
+    { label: "Price", get: (s) => `$${s.price.toLocaleString()}` },
+    { label: "Dosing", get: (s) => s.dosing },
+    { label: "Evidence weighting", get: (s) => s.evidenceWeight },
+    { label: "Hostility", get: (s) => s.hostility },
+    { label: "Robustness", get: (s) => `${s.result.robustness}% (${s.result.robustness_p10}–${s.result.robustness_p90}%)` },
+    { label: "Top risk", get: (s) => { const r = topRisk(s.result); return r ? `${r.title} (${r.frequency}%)` : "None flagged"; } },
+    { label: "Nash equilibrium gap", get: (s) => s.result.competitive ? `${s.result.competitive.price_gap_pct > 0 ? "+" : ""}${s.result.competitive.price_gap_pct}%` : "—" },
+    { label: "Modeled market share", get: (s) => s.result.competitive ? `${s.result.competitive.amgen_share_pct.median}%` : "—" },
+  ];
+  return (
+    <div className="mt-4 overflow-x-auto">
+      <div className="flex items-center gap-2 mb-2">
+        <Scale size={13} color={COLORS.amber} />
+        <div className="text-[10px] tracking-[0.14em] uppercase font-medium" style={{ ...mono, color: COLORS.amber }}>Side-by-side comparison</div>
+      </div>
+      <table className="w-full text-xs border-collapse">
+        <thead>
+          <tr>
+            <th className="text-left p-2 font-medium" style={{ ...mono, color: COLORS.textFaint, borderBottom: `1px solid ${COLORS.borderSoft}` }}></th>
+            {scenarios.map((s) => (
+              <th key={s.id} className="text-left p-2 font-semibold" style={{ ...display, color: COLORS.text, borderBottom: `1px solid ${COLORS.borderSoft}` }}>{s.label}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.label}>
+              <td className="p-2" style={{ ...body, color: COLORS.textDim, borderBottom: `1px solid ${COLORS.borderSoft}` }}>{row.label}</td>
+              {scenarios.map((s) => (
+                <td key={s.id} className="p-2" style={{ ...mono, color: COLORS.text, borderBottom: `1px solid ${COLORS.borderSoft}` }}>{row.get(s)}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // --- Main component -------------------------------------------------
 export default function AmgenDeriskLauncher() {
   const [price, setPrice] = useState(1300);
@@ -249,6 +347,48 @@ export default function AmgenDeriskLauncher() {
   const [narrative, setNarrative] = useState(null);
   const [narrativeLoading, setNarrativeLoading] = useState(false);
   const [narrativeError, setNarrativeError] = useState(null);
+  const [savedScenarios, setSavedScenarios] = useState(loadSavedScenarios);
+  const [compareIds, setCompareIds] = useState([]);
+  const [showSaveInput, setShowSaveInput] = useState(false);
+  const [saveLabel, setSaveLabel] = useState("");
+
+  useEffect(() => {
+    window.localStorage.setItem(SCENARIOS_STORAGE_KEY, JSON.stringify(savedScenarios));
+  }, [savedScenarios]);
+
+  const handleSaveScenario = useCallback(() => {
+    if (!result) return;
+    const label = saveLabel.trim() || `$${price.toLocaleString()} · ${dosing} · ${hostility}`;
+    const scenario = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      label,
+      price,
+      dosing,
+      evidenceWeight,
+      hostility,
+      iterations,
+      result,
+      narrative,
+      savedAt: new Date().toISOString(),
+    };
+    setSavedScenarios((prev) => [scenario, ...prev]);
+    setSaveLabel("");
+    setShowSaveInput(false);
+  }, [result, saveLabel, price, dosing, evidenceWeight, hostility, iterations, narrative]);
+
+  const handleDeleteScenario = useCallback((id) => {
+    setSavedScenarios((prev) => prev.filter((s) => s.id !== id));
+    setCompareIds((prev) => prev.filter((cid) => cid !== id));
+  }, []);
+
+  const toggleCompare = useCallback((id) => {
+    setCompareIds((prev) => (prev.includes(id) ? prev.filter((cid) => cid !== id) : [...prev, id]));
+  }, []);
+
+  const comparedScenarios = useMemo(
+    () => savedScenarios.filter((s) => compareIds.includes(s.id)),
+    [savedScenarios, compareIds]
+  );
 
   const currentWeights = useMemo(() => {
     if (result) return result.norm;
@@ -298,6 +438,37 @@ export default function AmgenDeriskLauncher() {
           Single-tenant sandbox &middot; SOC 2 Type II
         </div>
       </div>
+
+      {/* Saved Scenarios */}
+      {savedScenarios.length > 0 && (
+        <div className="px-6 pt-6 max-w-[1400px] mx-auto">
+          <div className="rounded-xl border p-4" style={{ background: COLORS.panel, borderColor: COLORS.border }}>
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <SectionLabel eyebrow="Saved" title="Scenario Vault" />
+              {compareIds.length > 0 && (
+                <div className="text-[10px]" style={{ ...mono, color: COLORS.amber }}>
+                  {compareIds.length} selected{compareIds.length < 2 ? " · pick at least 2 to compare" : ""}
+                </div>
+              )}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+              {savedScenarios.map((s) => (
+                <ScenarioCard
+                  key={s.id}
+                  scenario={s}
+                  selected={compareIds.includes(s.id)}
+                  onToggleCompare={() => toggleCompare(s.id)}
+                  onDelete={() => handleDeleteScenario(s.id)}
+                />
+              ))}
+            </div>
+            {comparedScenarios.length >= 2 && <ComparisonTable scenarios={comparedScenarios} />}
+            <div className="text-[10px] mt-3" style={{ ...mono, color: COLORS.textFaint }}>
+              Saved locally in this browser only &mdash; shared history across devices needs real accounts, not built yet.
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6 p-6 max-w-[1400px] mx-auto">
         {/* Left: Configuration Cockpit */}
@@ -444,6 +615,46 @@ export default function AmgenDeriskLauncher() {
                 </div>
               )}
             </div>
+
+            {hasRun && result && (
+              <div className="mb-4 -mt-2">
+                {showSaveInput ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      autoFocus
+                      value={saveLabel}
+                      onChange={(e) => setSaveLabel(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleSaveScenario()}
+                      placeholder={`$${price.toLocaleString()} · ${dosing} · ${hostility}`}
+                      className="flex-1 text-xs px-2 py-1.5 rounded-md border outline-none"
+                      style={{ ...body, background: COLORS.panelAlt, borderColor: COLORS.border, color: COLORS.text }}
+                    />
+                    <button
+                      onClick={handleSaveScenario}
+                      className="text-xs px-3 py-1.5 rounded-md font-medium"
+                      style={{ ...display, background: COLORS.amber, color: "#1A1206" }}
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => { setShowSaveInput(false); setSaveLabel(""); }}
+                      className="text-xs px-2 py-1.5"
+                      style={{ ...body, color: COLORS.textFaint }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowSaveInput(true)}
+                    className="flex items-center gap-1.5 text-xs"
+                    style={{ ...body, color: COLORS.amber }}
+                  >
+                    <Bookmark size={13} /> Save this scenario
+                  </button>
+                )}
+              </div>
+            )}
 
             {!hasRun ? (
               <div className="py-16 text-center">
