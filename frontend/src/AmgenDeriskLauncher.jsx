@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback } from "react";
 import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
-import { Play, AlertTriangle, ShieldCheck, ChevronRight, Loader2 } from "lucide-react";
+import { Play, AlertTriangle, ShieldCheck, ChevronRight, Loader2, Sparkles } from "lucide-react";
 
 const FONT_IMPORT_ID = "amgen-derisk-fonts";
 if (typeof document !== "undefined" && !document.getElementById(FONT_IMPORT_ID)) {
@@ -73,6 +73,24 @@ async function fetchSimulation({ price, dosing, evidenceWeight, hostility, itera
   });
   if (!res.ok) throw new Error(`Simulation request failed: ${res.status}`);
   return res.json();
+}
+
+async function fetchNarrative({ price, dosing, evidenceWeight, hostility, result }) {
+  const res = await fetch(`${API_BASE_URL}/api/narrative`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      price,
+      dosing,
+      evidence_weight: evidenceWeight,
+      hostility,
+      result,
+    }),
+  });
+  if (!res.ok) throw new Error(`Narrative request failed: ${res.status}`);
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data.narrative;
 }
 
 // --- Boardroom Tension Triangle -----------------------------------------
@@ -228,6 +246,9 @@ export default function AmgenDeriskLauncher() {
   const [result, setResult] = useState(null);
   const [hasRun, setHasRun] = useState(false);
   const [error, setError] = useState(null);
+  const [narrative, setNarrative] = useState(null);
+  const [narrativeLoading, setNarrativeLoading] = useState(false);
+  const [narrativeError, setNarrativeError] = useState(null);
 
   const currentWeights = useMemo(() => {
     if (result) return result.norm;
@@ -242,10 +263,17 @@ export default function AmgenDeriskLauncher() {
   const handleRun = useCallback(async () => {
     setRunning(true);
     setError(null);
+    setNarrative(null);
+    setNarrativeError(null);
     try {
       const sim = await fetchSimulation({ price, dosing, evidenceWeight, hostility, iterations });
       setResult(sim);
       setHasRun(true);
+      setNarrativeLoading(true);
+      fetchNarrative({ price, dosing, evidenceWeight, hostility, result: sim })
+        .then((text) => setNarrative(text))
+        .catch((err) => setNarrativeError(err.message || "AI insight failed"))
+        .finally(() => setNarrativeLoading(false));
     } catch (err) {
       setError(err.message || "Simulation failed");
     } finally {
@@ -373,6 +401,29 @@ export default function AmgenDeriskLauncher() {
               </div>
             </div>
           </div>
+
+          {/* AI Analyst */}
+          {hasRun && (
+            <div className="rounded-xl border p-5" style={{ background: COLORS.panel, borderColor: COLORS.amber + "40" }}>
+              <div className="flex items-center gap-2 mb-3">
+                <Sparkles size={14} color={COLORS.amber} />
+                <div className="text-[10px] tracking-[0.18em] uppercase font-medium" style={{ ...mono, color: COLORS.amber }}>
+                  Featurely AI &middot; Run Analysis
+                </div>
+              </div>
+              {narrativeLoading ? (
+                <div className="flex items-center gap-2 text-sm" style={{ ...body, color: COLORS.textFaint }}>
+                  <Loader2 size={14} className="animate-spin" /> Synthesizing insight&hellip;
+                </div>
+              ) : narrativeError ? (
+                <div className="text-xs" style={{ ...body, color: COLORS.textFaint }}>
+                  AI insight unavailable ({narrativeError}).
+                </div>
+              ) : narrative ? (
+                <p className="text-sm leading-relaxed" style={{ ...body, color: COLORS.text }}>{narrative}</p>
+              ) : null}
+            </div>
+          )}
 
           {/* Strategic Scoreboard */}
           <div className="rounded-xl border p-5" style={{ background: COLORS.panel, borderColor: COLORS.border }}>

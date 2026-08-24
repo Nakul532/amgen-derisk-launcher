@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from app.narrative import generate_narrative
 from app.simulation import DOSING_OPTIONS, HOSTILITY_OPTIONS, run_simulation
 
 app = FastAPI(title="Amgen De-Risk Launcher API")
@@ -25,6 +26,14 @@ class SimulationRequest(BaseModel):
     evidence_weight: float = Field(ge=0, le=1)
     hostility: str
     iterations: int = Field(default=4000, ge=200, le=10000)
+
+
+class NarrativeRequest(BaseModel):
+    price: float
+    dosing: str
+    evidence_weight: float
+    hostility: str
+    result: dict
 
 
 @app.get("/")
@@ -49,3 +58,12 @@ def simulate(req: SimulationRequest):
     if req.hostility not in HOSTILITY_OPTIONS:
         return {"error": f"hostility must be one of {HOSTILITY_OPTIONS}"}
     return run_simulation(req.price, req.dosing, req.evidence_weight, req.hostility, req.iterations)
+
+
+@app.post("/api/narrative")
+def narrative(req: NarrativeRequest):
+    try:
+        text = generate_narrative(req.price, req.dosing, req.evidence_weight, req.hostility, req.result)
+        return {"narrative": text}
+    except Exception as e:
+        return {"error": str(e)}
