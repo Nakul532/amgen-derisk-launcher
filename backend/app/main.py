@@ -24,6 +24,7 @@ class SimulationRequest(BaseModel):
     dosing: str
     evidence_weight: float = Field(ge=0, le=1)
     hostility: str
+    iterations: int = Field(default=4000, ge=200, le=10000)
 
 
 @app.get("/")
@@ -47,4 +48,4 @@ def simulate(req: SimulationRequest):
         return {"error": f"dosing must be one of {DOSING_OPTIONS}"}
     if req.hostility not in HOSTILITY_OPTIONS:
         return {"error": f"hostility must be one of {HOSTILITY_OPTIONS}"}
-    return run_simulation(req.price, req.dosing, req.evidence_weight, req.hostility)
+    return run_simulation(req.price, req.dosing, req.evidence_weight, req.hostility, req.iterations)

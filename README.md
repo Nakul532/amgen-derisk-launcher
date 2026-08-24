@@ -2,7 +2,9 @@
 
 A demo tool for stress-testing MariTide commercial launch parameters (price,
 dosing, clinical evidence weighting, competitor hostility) against a
-simplified boardroom equilibrium model.
+boardroom equilibrium model, using a real Monte Carlo simulation (adjustable
+iteration count, up to 10,000 runs) rather than a single deterministic
+estimate.
 
 ## Live URLs
 
@@ -14,12 +16,19 @@ simplified boardroom equilibrium model.
 
 ## Architecture
 
-- `backend/` — FastAPI service. Ports the launch simulation model to Python
-  and exposes it via `POST /api/simulate`. CORS is restricted to the
-  frontend's origin via the `ALLOWED_ORIGINS` env var.
+- `backend/` — FastAPI service (`app/simulation.py`). Each `/api/simulate`
+  call resamples price sensitivity, competitor pricing, hostility, and
+  evidence weighting with real randomness across N iterations (N is
+  caller-supplied, 200-10,000), then aggregates the results: p10/median/p90
+  bands for the 12-month trajectory and robustness score, and empirical
+  trigger frequencies for each risk (sampled from smooth probability curves
+  near thresholds, not hard cutoffs). CORS is restricted to the frontend's
+  origin via the `ALLOWED_ORIGINS` env var.
 - `frontend/` — Vite + React app (the original `AmgenDeriskLauncher`
-  component). Calls the backend instead of running the simulation locally.
-  Points at the backend via the `VITE_API_URL` build-time env var.
+  component). Calls the backend instead of running the simulation locally,
+  with an iteration-count slider and a band chart (p10-p90 shaded range plus
+  median line) instead of a single trajectory line. Points at the backend
+  via the `VITE_API_URL` build-time env var.
 
 No authentication or database — this is a demo build for stakeholder review.
 

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback } from "react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
+import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import { Play, AlertTriangle, ShieldCheck, ChevronRight, Loader2 } from "lucide-react";
 
 const FONT_IMPORT_ID = "amgen-derisk-fonts";
@@ -59,7 +59,7 @@ function previewWeights({ price, dosing, evidenceWeight, hostility }) {
   return { ceo: ceoWeight / total, cfo: cfoWeight / total, cmo: cmoWeight / total };
 }
 
-async function fetchSimulation({ price, dosing, evidenceWeight, hostility }) {
+async function fetchSimulation({ price, dosing, evidenceWeight, hostility, iterations }) {
   const res = await fetch(`${API_BASE_URL}/api/simulate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -68,6 +68,7 @@ async function fetchSimulation({ price, dosing, evidenceWeight, hostility }) {
       dosing,
       evidence_weight: evidenceWeight,
       hostility,
+      iterations,
     }),
   });
   if (!res.ok) throw new Error(`Simulation request failed: ${res.status}`);
@@ -205,10 +206,13 @@ function RiskCard({ risk }) {
 
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
+  const point = payload[0]?.payload;
+  if (!point) return null;
   return (
     <div className="px-3 py-2 rounded-md border text-xs" style={{ ...mono, background: COLORS.panel, borderColor: COLORS.border, color: COLORS.text }}>
       <div style={{ color: COLORS.textDim }}>{label}</div>
-      <div style={{ color: COLORS.amber }}>{payload[0].value}% share</div>
+      <div style={{ color: COLORS.amber }}>{point.median}% median</div>
+      <div style={{ color: COLORS.textFaint }}>{point.p10}%–{point.p90}% (p10–p90)</div>
     </div>
   );
 }
@@ -219,6 +223,7 @@ export default function AmgenDeriskLauncher() {
   const [dosing, setDosing] = useState("Monthly");
   const [evidenceWeight, setEvidenceWeight] = useState(0.5);
   const [hostility, setHostility] = useState("Medium");
+  const [iterations, setIterations] = useState(4000);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState(null);
   const [hasRun, setHasRun] = useState(false);
@@ -229,11 +234,16 @@ export default function AmgenDeriskLauncher() {
     return previewWeights({ price, dosing, evidenceWeight, hostility });
   }, [price, dosing, evidenceWeight, hostility, result]);
 
+  const trajectoryWithBand = useMemo(() => {
+    if (!result) return [];
+    return result.trajectory.map((d) => ({ ...d, bandWidth: Number((d.p90 - d.p10).toFixed(1)) }));
+  }, [result]);
+
   const handleRun = useCallback(async () => {
     setRunning(true);
     setError(null);
     try {
-      const sim = await fetchSimulation({ price, dosing, evidenceWeight, hostility });
+      const sim = await fetchSimulation({ price, dosing, evidenceWeight, hostility, iterations });
       setResult(sim);
       setHasRun(true);
     } catch (err) {
@@ -241,7 +251,7 @@ export default function AmgenDeriskLauncher() {
     } finally {
       setRunning(false);
     }
-  }, [price, dosing, evidenceWeight, hostility]);
+  }, [price, dosing, evidenceWeight, hostility, iterations]);
 
   return (
     <div className="w-full min-h-screen" style={{ background: COLORS.bg, ...body }}>
@@ -296,6 +306,16 @@ export default function AmgenDeriskLauncher() {
               <div className="text-xs mb-2" style={{ ...body, color: COLORS.textDim }}>Competitor hostility</div>
               <Toggle options={HOSTILITY_OPTIONS} value={hostility} onChange={setHostility} />
             </div>
+
+            <SliderControl
+              label="Monte Carlo iterations"
+              value={iterations}
+              min={500}
+              max={10000}
+              step={500}
+              format={(v) => v.toLocaleString()}
+              onChange={setIterations}
+            />
           </div>
 
           <button
@@ -306,7 +326,7 @@ export default function AmgenDeriskLauncher() {
           >
             {running ? (
               <>
-                <Loader2 size={16} className="animate-spin" /> Solving 4,000 iterations&hellip;
+                <Loader2 size={16} className="animate-spin" /> Solving {iterations.toLocaleString()} iterations&hellip;
               </>
             ) : (
               <>
@@ -367,6 +387,9 @@ export default function AmgenDeriskLauncher() {
                   >
                     {result.robustness}%
                   </div>
+                  <div className="text-[10px]" style={{ ...mono, color: COLORS.textFaint }}>
+                    {result.robustness_p10}%&ndash;{result.robustness_p90}% range &middot; {result.iterations.toLocaleString()} runs
+                  </div>
                 </div>
               )}
             </div>
@@ -382,17 +405,21 @@ export default function AmgenDeriskLauncher() {
               <div className="space-y-6">
                 {/* Chart */}
                 <div>
-                  <div className="text-xs mb-2" style={{ ...body, color: COLORS.textDim }}>12-month market share trajectory</div>
+                  <div className="text-xs mb-2" style={{ ...body, color: COLORS.textDim }}>
+                    12-month market share trajectory <span style={{ color: COLORS.textFaint }}>(p10&ndash;p90 band across {result.iterations.toLocaleString()} runs)</span>
+                  </div>
                   <div style={{ height: 200 }}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={result.trajectory} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                      <ComposedChart data={trajectoryWithBand} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke={COLORS.borderSoft} vertical={false} />
                         <XAxis dataKey="month" tick={{ fontSize: 10, fill: COLORS.textFaint, fontFamily: "IBM Plex Mono" }} axisLine={{ stroke: COLORS.borderSoft }} tickLine={false} />
                         <YAxis tick={{ fontSize: 10, fill: COLORS.textFaint, fontFamily: "IBM Plex Mono" }} axisLine={false} tickLine={false} unit="%" />
                         <Tooltip content={<CustomTooltip />} />
                         <ReferenceLine y={0} stroke={COLORS.borderSoft} />
-                        <Line type="monotone" dataKey="share" stroke={COLORS.amber} strokeWidth={2} dot={{ r: 2.5, fill: COLORS.amber }} activeDot={{ r: 4 }} />
-                      </LineChart>
+                        <Area type="monotone" dataKey="p10" stackId="band" stroke="none" fill="transparent" />
+                        <Area type="monotone" dataKey="bandWidth" stackId="band" stroke="none" fill={COLORS.amber} fillOpacity={0.15} />
+                        <Line type="monotone" dataKey="median" stroke={COLORS.amber} strokeWidth={2} dot={{ r: 2.5, fill: COLORS.amber }} activeDot={{ r: 4 }} />
+                      </ComposedChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
