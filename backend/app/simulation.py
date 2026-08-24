@@ -2,6 +2,7 @@ import math
 import random
 
 from app.game_theory import LILLY, NOVO, solve_competitor_reaction, solve_joint_equilibrium
+from app.synthetic_population import run_population
 
 DOSING_OPTIONS = ["Weekly", "Bi-Weekly", "Monthly"]
 HOSTILITY_OPTIONS = ["Low", "Medium", "High"]
@@ -217,6 +218,8 @@ def run_simulation(price: float, dosing: str, evidence_weight: float, hostility:
         "game_iterations": game_iterations,
     }
 
+    population = run_population(price, dosing_convenience_bonus, evidence_weight, hostility_idx)
+
     return {
         "norm": norm,
         "robustness": robustness_mean,
@@ -227,4 +230,5 @@ def run_simulation(price: float, dosing: str, evidence_weight: float, hostility:
         "playbook": playbook,
         "iterations": iterations,
         "competitive": competitive,
+        "population": population,
     }

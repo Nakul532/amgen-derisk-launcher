@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
-import { Play, AlertTriangle, ShieldCheck, ChevronRight, Loader2, Sparkles, Bookmark, X, Scale } from "lucide-react";
+import { Play, AlertTriangle, ShieldCheck, ChevronRight, Loader2, Sparkles, Bookmark, X, Scale, Users } from "lucide-react";
 
 const FONT_IMPORT_ID = "amgen-derisk-fonts";
 if (typeof document !== "undefined" && !document.getElementById(FONT_IMPORT_ID)) {
@@ -52,6 +52,19 @@ function topRisk(result) {
   const real = (result?.risks || []).filter((r) => r.severity !== "clear");
   return real.length ? real[0] : null;
 }
+
+const DRIVER_LABELS = {
+  price: "Price exceeds their threshold",
+  evidence: "Evidence strategy mismatch",
+  budget: "Budget pressure",
+  incumbent: "Incumbent bias",
+};
+
+const DECISION_META = {
+  favorable: { label: "Favorable coverage", color: COLORS.teal, bg: COLORS.tealDim },
+  rebate_required: { label: "Rebate required", color: COLORS.amber, bg: COLORS.amberDim },
+  exclude: { label: "Excluded", color: COLORS.red, bg: COLORS.redDim },
+};
 
 function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
@@ -427,7 +440,7 @@ export default function AmgenDeriskLauncher() {
       <div className="border-b px-6 py-4 flex items-center justify-between flex-wrap gap-3" style={{ borderColor: COLORS.borderSoft }}>
         <div>
           <div className="text-[10px] tracking-[0.18em] uppercase mb-1" style={{ ...mono, color: COLORS.textFaint }}>
-            Featurely &middot; Launch De-Risk Simulator
+            Featurely for Pharma &middot; Launch Pricing Simulator
           </div>
           <h1 className="text-xl font-semibold" style={{ ...display, color: COLORS.text }}>
             MariTide Commercial Launch &mdash; Amgen
@@ -435,7 +448,7 @@ export default function AmgenDeriskLauncher() {
         </div>
         <div className="flex items-center gap-2 text-xs" style={{ ...mono, color: COLORS.textDim }}>
           <span className="w-1.5 h-1.5 rounded-full" style={{ background: COLORS.teal }} />
-          Single-tenant sandbox &middot; SOC 2 Type II
+          Built on Featurely&apos;s synthetic population engine
         </div>
       </div>
 
@@ -596,10 +609,89 @@ export default function AmgenDeriskLauncher() {
             </div>
           )}
 
+          {/* Synthetic Payer Population */}
+          {hasRun && result?.population && (
+            <div className="rounded-xl border p-5" style={{ background: COLORS.panel, borderColor: COLORS.border }}>
+              <div className="flex items-center gap-2 mb-1">
+                <Users size={14} color={COLORS.teal} />
+                <SectionLabel eyebrow="Panel 3 &middot; Featurely core engine" title="Synthetic Payer Population" />
+              </div>
+              <p className="text-xs leading-relaxed mb-4 -mt-2" style={{ ...body, color: COLORS.textFaint }}>
+                {result.population.population_size.toLocaleString()} individually modeled synthetic formulary reviewers, each with their own price threshold, evidence trust, budget pressure, and incumbent bias, each making their own explainable decision. Trait distributions are built from public GLP-1 launch information and reasonable assumptions, not Amgen&apos;s real data.
+              </p>
+
+              <div className="flex items-end gap-4 mb-3">
+                <div>
+                  <div className="text-[10px]" style={{ ...mono, color: COLORS.textFaint }}>Coverage rate</div>
+                  <div
+                    className="text-3xl font-bold"
+                    style={{ ...mono, color: result.population.coverage_rate >= 60 ? COLORS.teal : result.population.coverage_rate >= 30 ? COLORS.amber : COLORS.red }}
+                  >
+                    {result.population.coverage_rate}%
+                  </div>
+                </div>
+                <div className="text-xs pb-1.5" style={{ ...body, color: COLORS.textDim }}>
+                  of {result.population.population_size.toLocaleString()} synthetic reviewers grant favorable coverage at this price and evidence strategy.
+                </div>
+              </div>
+
+              <div className="h-2.5 rounded-full overflow-hidden flex mb-2" style={{ background: COLORS.borderSoft }}>
+                <div style={{ width: `${result.population.favorable_pct}%`, background: COLORS.teal }} />
+                <div style={{ width: `${result.population.rebate_required_pct}%`, background: COLORS.amber }} />
+                <div style={{ width: `${result.population.exclude_pct}%`, background: COLORS.red }} />
+              </div>
+              <div className="flex justify-between text-[10px] mb-4 flex-wrap gap-1" style={{ ...mono }}>
+                <span style={{ color: COLORS.teal }}>Favorable {result.population.favorable_pct}%</span>
+                <span style={{ color: COLORS.amber }}>Rebate required {result.population.rebate_required_pct}%</span>
+                <span style={{ color: COLORS.red }}>Excluded {result.population.exclude_pct}%</span>
+              </div>
+
+              <div className="mb-4">
+                <div className="text-xs mb-2" style={{ ...body, color: COLORS.textDim }}>Why reviewers who didn&apos;t grant favorable coverage said no</div>
+                <div className="space-y-1.5">
+                  {Object.entries(result.population.rejection_drivers)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([driver, pct]) => (
+                      <div key={driver} className="flex items-center gap-2">
+                        <div className="text-[10px] w-32 shrink-0" style={{ ...body, color: COLORS.textFaint }}>{DRIVER_LABELS[driver] || driver}</div>
+                        <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: COLORS.borderSoft }}>
+                          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: COLORS.amber }} />
+                        </div>
+                        <div className="text-[10px] w-10 text-right" style={{ ...mono, color: COLORS.textFaint }}>{pct}%</div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="text-xs mb-2" style={{ ...body, color: COLORS.textDim }}>Three synthetic reviewers from this run</div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  {result.population.sample_agents.map((a, i) => {
+                    const meta = DECISION_META[a.decision];
+                    return (
+                      <div key={i} className="rounded-lg border p-2.5" style={{ borderColor: COLORS.borderSoft, background: COLORS.panelAlt }}>
+                        <div
+                          className="inline-block text-[9px] px-1.5 py-0.5 rounded-full mb-1.5"
+                          style={{ ...mono, background: meta.bg, color: meta.color }}
+                        >
+                          {meta.label}
+                        </div>
+                        <div className="text-[10px] leading-relaxed mb-1" style={{ ...mono, color: COLORS.textFaint }}>
+                          Price threshold ${a.traits.price_threshold.toLocaleString()} &middot; Evidence trust {a.traits.evidence_trust} &middot; Budget pressure {a.traits.budget_pressure} &middot; Incumbent bias {a.traits.incumbent_bias}
+                        </div>
+                        <div className="text-[10px]" style={{ ...body, color: COLORS.textDim }}>{a.explanation}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Strategic Scoreboard */}
           <div className="rounded-xl border p-5" style={{ background: COLORS.panel, borderColor: COLORS.border }}>
             <div className="flex items-center justify-between mb-1">
-              <SectionLabel eyebrow="Panel 3" title="Strategic Scoreboard" />
+              <SectionLabel eyebrow="Panel 4" title="Strategic Scoreboard" />
               {hasRun && result && (
                 <div className="text-right mb-4">
                   <div className="text-[10px]" style={{ ...mono, color: COLORS.textFaint }}>Robustness</div>
@@ -713,7 +805,7 @@ export default function AmgenDeriskLauncher() {
           {/* Competitive Equilibrium */}
           {hasRun && result?.competitive && (
             <div className="rounded-xl border p-5" style={{ background: COLORS.panel, borderColor: COLORS.border }}>
-              <SectionLabel eyebrow="Panel 4" title="Competitive Equilibrium" />
+              <SectionLabel eyebrow="Panel 5" title="Competitive Equilibrium" />
               <p className="text-xs leading-relaxed mb-4" style={{ ...body, color: COLORS.textFaint }}>
                 A real Bertrand-Nash best-response solve, not a labeled Monte Carlo run: Novo Nordisk and Eli Lilly
                 are modeled as rational agents that re-price to maximize their own profit against your configuration.
