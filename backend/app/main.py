@@ -26,6 +26,16 @@ class SimulationRequest(BaseModel):
     hostility: str
 
 
+@app.get("/")
+def root():
+    return {
+        "service": "Amgen De-Risk Launcher API",
+        "docs": "/docs",
+        "health": "/health",
+        "simulate": "POST /api/simulate",
+    }
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
